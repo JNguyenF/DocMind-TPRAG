@@ -2,6 +2,7 @@ import streamlit as st
 import pymupdf
 
 from langchain_core.documents import Document
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 st.set_page_config(
     page_title="DocMind",
@@ -76,10 +77,24 @@ if index_button:
         if not documents:
             st.error("Aucun texte n'a pu être extrait.")
         else:
-            st.success(f"✅ {len(documents)} document(s) extrait(s) avec succès.")
+            #  chunks 
+            splitter = RecursiveCharacterTextSplitter(
+                chunk_size=800,
+                chunk_overlap=150,
+            )
+            chunks = splitter.split_documents(documents)
 
-            with st.expander("👀 Aperçu du texte extrait"):
-                for doc in documents:
-                    st.markdown(f"**{doc.metadata['source']} — page {doc.metadata['page']}**")
-                    st.write(doc.page_content[:500] + "...")
+            st.success(
+                f"✅ {len(documents)} document(s) extrait(s), "
+                f"{len(chunks)} chunks créés."
+            )
+
+            with st.expander(" Aperçu des chunks créés"):
+                for i, chunk in enumerate(chunks[:10], start=1):
+                    st.markdown(
+                        f"**Chunk {i} — {chunk.metadata['source']} — page {chunk.metadata['page']}**"
+                    )
+                    st.write(chunk.page_content)
                     st.divider()
+                if len(chunks) > 10:
+                    st.caption(f"... et {len(chunks) - 10} autres chunks non affichés.")
