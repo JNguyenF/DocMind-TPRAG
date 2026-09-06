@@ -1,6 +1,8 @@
 import streamlit as st
 import pymupdf
 
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
 from langchain_core.documents import Document
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
@@ -10,6 +12,11 @@ st.set_page_config(
     layout="wide",
     initial_sidebar_state="expanded",
 )
+
+# Session : on garde la base vectorielle en mémoire entre les interactions
+
+if "vectorstore" not in st.session_state:
+    st.session_state.vectorstore = None
 
 # Extraction
 
@@ -72,29 +79,39 @@ if index_button:
     if not uploaded_files:
         st.warning("⚠️ Veuillez sélectionner au moins un document.")
     else:
-        documents = extract_documents(uploaded_files)
+        try:
+            with st.spinner("Analyse et indexation des documents..."):
+                documents = extract_documents(uploaded_files)
 
-        if not documents:
-            st.error("Aucun texte n'a pu être extrait.")
-        else:
-            #  chunks 
-            splitter = RecursiveCharacterTextSplitter(
-                chunk_size=800,
-                chunk_overlap=150,
-            )
-            chunks = splitter.split_documents(documents)
+                if not documents:
+                    st.error("Aucun texte n'a pu être extrait.")
+                    st.stop()
+
+                #  chunks
+                splitter = RecursiveCharacterTextSplitter(
+                    chunk_size=800,
+                    chunk_overlap=150,
+                )
+                chunks = splitter.split_documents(documents)
+
+                # embeddings 
+                embeddings = HuggingFaceEmbeddings(
+                    model_name="sentence-transformers/all-MiniLM-L6-v2"
+                )
+
+                
+                st.session_state.vectorstore = Chroma.from_documents(
+                    documents=chunks,
+                    embedding=embeddings,
+                )
 
             st.success(
                 f"✅ {len(documents)} document(s) extrait(s), "
-                f"{len(chunks)} chunks créés."
+                f"{len(chunks)} chunks indexés dans la base vectorielle."
             )
 
-            with st.expander(" Aperçu des chunks créés"):
-                for i, chunk in enumerate(chunks[:10], start=1):
-                    st.markdown(
-                        f"**Chunk {i} — {chunk.metadata['source']} — page {chunk.metadata['page']}**"
-                    )
-                    st.write(chunk.page_content)
-                    st.divider()
-                if len(chunks) > 10:
-                    st.caption(f"... et {len(chunks) - 10} autres chunks non affichés.")
+        except Exception as e:
+            st.error(f"❌ Erreur pendant l'indexation : {e}")
+
+if st.session_state.vectorstore is not None:
+    st.info("📚 Base vectorielle prête.")
